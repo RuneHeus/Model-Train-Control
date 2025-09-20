@@ -3,4 +3,4 @@ Complete software system for controlling model trains, implemented in Racket. Th
 
 
 
-*Project ontwikkeld in het kader van Besturingssystemen en systeemfundamenten aan de VUB*
+*Project ontwikkeld in het kader van Programmeerproject 2 aan de VUB*
