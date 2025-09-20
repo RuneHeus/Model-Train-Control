@@ -1,2 +1,6 @@
 # Model-Train-Control
-Racket-based model train control system with Command Station (Z21), Infrabel infrastructure management, and NMBS GUI. Supports train movement, track switches, detection blocks, power-ups, levels, waves, and both simulator and real hardware. Modular, maintainable design.
+Complete software system for controlling model trains, implemented in Racket. The project integrates multiple components including a Command Station (Z21) via DCC protocol, Infrabel for infrastructure management, and NMBS with a graphical interface. Features include train movement control, track switch management, detection blocks, power-ups, levels, and wave-based scenarios. The system supports both a simulator and real hardware, allowing testing and modular development. Designed for large-scale software architecture, it emphasizes maintainability, modularity, and clear interface abstraction.
+
+
+
+*Project ontwikkeld in het kader van Besturingssystemen en systeemfundamenten aan de VUB*
