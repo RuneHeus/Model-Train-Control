@@ -1,0 +1,219 @@
+#lang racket
+
+(require "../Procedures.rkt")
+
+(provide make-railway)
+
+(define (make-railway)
+
+  (define railway-conenctions
+    (list
+     (cons 'S-26 '1-4)
+     (cons '1-4 '1-5)
+     (cons '1-5 'S-20)
+     (cons 'S-20 '2-4)
+     (cons '2-4 'S-23)
+     (cons 'S-10 '1-1)
+     (cons 'S-28 '1-1)
+     (cons '1-2 'S-9)
+     (cons 'S-27 '1-2)
+     (cons '1-3 'S-27)
+     (cons 'U-1 'S-26)
+     (cons 'S-18 '1-7)
+     (cons '1-7 '1-6)
+     (cons '1-6 'S-5)
+     (cons 'S-6 '2-3)
+     (cons '2-3 'S-12)
+     (cons '2-8 'S-16)
+     (cons 'U-7 'S-16)
+     (cons 'U-4 'S-12)
+     (cons 'U-3 'S-9)
+     (cons 'U-2 '1-3)
+     (cons '2-1 'S-1)
+     (cons '1-8 'S-25)
+     (cons 'U-6 'S-2)
+     (cons '2-2 'S-3)
+     (cons '2-5 'S-8)
+     (cons '2-6 'S-4)
+     (cons '2-7 'S-4)
+     (cons 'U-5 'S-7)))
+
+  (define detection-connection
+    (list
+     (cons '1-1 '1-4)
+     (cons '1-4 '1-5)
+     (cons '1-5 '2-4)
+     (cons '2-4 '1-3)
+     (cons '1-3 '1-4)
+     (cons '2-4 '1-2)
+     (cons '1-2 '1-4)
+     (cons '2-4 '1-1)
+     (cons '1-1 '1-7)
+     (cons '1-7 '1-6)
+     (cons '1-6 '2-3)
+     (cons '2-3 '1-1)
+     (cons '2-3 '1-2)
+
+     (cons '1-8 '2-3)
+     (cons '1-8 '2-2)
+     (cons '1-8 '2-5)
+     (cons '1-8 '2-6)
+     (cons '1-8 '2-7)
+
+     (cons '2-1 '2-3)
+     (cons '2-1 '2-2)
+     (cons '2-1 '2-5)
+     (cons '2-1 '2-6)
+     (cons '2-1 '2-7)
+
+     (cons '2-3 '2-8)
+     (cons '2-4 '2-8)
+     ))
+
+  (define barrier-locations
+    (list (cons 'C-2 '1-5)
+          (cons 'C-2 '1-6)
+
+          (cons 'C-1 '1-3)
+          (cons 'C-1 'U-7)))
+
+  (define (positive-next db lijst) ;counter clockwise
+    (define (iter lst)
+      (cond ((null? lst) #f)
+            ((eq? (caar lst) db) (car lst))
+            (else (iter (cdr lst)))))
+    (iter lijst))
+
+  (define (negative-next db lijst) ;clockwise
+    (define (iter lst)
+      (cond ((null? lst) #f)
+            ((eq? (cdar lst) db) (car lst))
+            (else (iter (cdr lst)))))
+    (iter lijst))
+
+  (define switch-connections
+    (list
+     (list 'S-1 'U-6 '2-1 'S-25)
+     (list 'S-2 'U-6 'S-7 'S-3)
+     (list 'S-3 'S-2 '2-2 'S-8)
+     (list 'S-4 'S-8 '2-6 '2-7)
+     (list 'S-5 'S-6 '1-6 'S-7)
+     (list 'S-6 'S-5 '2-3 '2-3)
+     (list 'S-7 'S-5 'U-5 'S-2)
+     (list 'S-8 'S-3 '2-5 '2-4)
+     (list 'S-9 '1-2 'U-3 'S-11)
+     (list 'S-10 'S-11 '1-1 'S-16)
+     (list 'S-11 'S-12 'S-9 'S-10)
+     (list 'S-12 'S-11 'U-4 '2-3)
+     (list 'S-16 'U-7 'S-10 '2-8)
+     (list 'S-20 '2-4 '1-5 'S-6)
+     (list 'S-23 '2-4 'S-24 'U-4)
+     (list 'S-24 'S-23 'U-3 'U-2)
+     (list 'S-25 '1-8 'U-5 'S-1)
+     (list 'S-26 '1-4 'U-1 'S-27)
+     (list 'S-27 'S-26 '1-3 '1-2)
+     (list 'S-28 '1-1 '1-7 'U-1)
+     ))
+
+  (define (switch-connections-check switch)
+    (define (iter lst)
+      (cond ((null? lst) #f) ; Return #f if no match is found
+            ((eq? (caar lst) switch) (car lst))
+            (else (iter (cdr lst)))))
+    (iter switch-connections))
+
+  (define (find-connected-switch id switches)
+    (define (iter lst)
+      (cond ((null? lst) #f)
+            ((or (eq? ((car lst) 'connection-in) id) (eq? ((car lst) 'connected-out) id) (eq? ((car lst) 'not-connected-out) id)) (car lst))
+            (else (iter (cdr lst)))))
+    (iter switches))
+
+  (define (flatten-path path)
+    (define (flatten-helper lst acc)
+      (cond
+        ((null? lst) acc)
+        ((not (car lst)) (flatten-helper (cdr lst) acc))
+        ((list? (car lst)) (flatten-helper (car lst) (flatten-helper (cdr lst) acc)))
+        (else (flatten-helper (cdr lst) (cons (car lst) acc)))))
+    (flatten-helper (reverse path) '()))
+
+  (define (create-path-list start end lst)
+    (define (helper lst current-path result)
+      (cond
+        ((null? lst) result)
+        ((eq? (car lst) start)
+         (helper (cdr lst) (list start) result))
+        ((eq? (car lst) end)
+         (helper (cdr lst) '() (append result (list (append current-path (list end))))))
+        (else
+         (helper (cdr lst) (append current-path (list (car lst))) result))))
+
+    (helper lst '() '()))
+
+
+  (define (find-path start end railway-connections switches)
+    (define stack (list (list start '())))
+    (define visited '())
+
+    (let loop ((stack stack) (visited visited))
+      (cond
+        ((null? stack) '()) ; No path found
+        (else
+         (let* ((current-node (caar stack))
+                (current-path (cdar stack))
+                (rest-stack (cdr stack)))
+           (set! stack rest-stack)
+           (cond
+             ((eq? current-node end)
+              (begin
+                (reverse (cons end current-path)))) ; Reverse the path before returning
+             ((member current-node visited)
+              (begin
+                #f))
+             (else
+              (let* ((switch (search-adt current-node switches))
+                     (connected-nodes
+                      (if switch
+                            (cond ((eq? (car current-path) (switch 'connection-in)) (list (switch 'connected-out) (switch 'not-connected-out)))
+                                  (else (list (switch 'connection-in))))
+                          (append-map (lambda (conn)
+                                        (if (eq? (car conn) current-node)
+                                            (list (cdr conn))
+                                            (if (eq? (cdr conn) current-node)
+                                                (list (car conn))
+                                                '())))
+                                      railway-connections)))
+                     (switch-connected (find-connected-switch current-node switches)))
+                (let ((visited-new (cons current-node visited)))
+                  (define (iter connected-nodes)
+                    (cond ((null? connected-nodes) '())
+                          (else (cons (loop (cons (flatten (list (car connected-nodes) (cons current-node current-path))) stack) visited-new) (iter (cdr connected-nodes))))))
+                  
+                  (iter connected-nodes))))))))))
+
+  (define (smallest-list list-of-lists)
+    (define (helper remaining-lists smallest)
+      (if (null? remaining-lists)
+          smallest
+          (helper (cdr remaining-lists)
+                  (if (or (null? smallest) (< (length (car remaining-lists)) (length smallest)))
+                      (car remaining-lists)
+                      smallest))))
+
+    (helper (cdr list-of-lists) (car list-of-lists)))
+  
+  (define (calculate-path start end switches)
+    (let ((all-paths (find-path start end railway-conenctions switches)))
+      (smallest-list (create-path-list start end (reverse (flatten-path all-paths))))))
+
+  (define (dispatch msg)
+    (cond
+      ((eq? msg 'detection-connection) detection-connection)
+      ((eq? msg 'positive-next) positive-next)
+      ((eq? msg 'negative-next) negative-next)
+      ((eq? msg 'barrier-locations) barrier-locations)
+      ((eq? msg 'switch-connections-check) switch-connections-check)
+      ((eq? msg 'railway-conenctions) railway-conenctions)
+      ((eq? msg 'calculate-path) calculate-path)))
+  dispatch)

@@ -1,0 +1,204 @@
+#lang racket
+
+;Connection = FIXED
+
+(provide make-nmbs)
+
+(require "Connection.rkt")
+(require "Gui.rkt")
+(require "Train.rkt")
+(require "Light.rkt")
+(require "Switch.rkt")
+(require "Detectionblock.rkt")
+(require "Barrier.rkt")
+(require "Railway.rkt")
+(require "../Procedures.rkt")
+(require racket/gui)
+
+(define (make-nmbs)
+  (let* ((railway (make-railway))
+         (gui #f)
+         (connection #f)
+         (started? #f)
+         (setup-count 0))
+
+    (define (setup-switches switch-ids)
+      (define (iter lst)
+        (when (not (null? lst))
+          (let ((connection-list ((railway 'switch-connections-check) (car lst))))
+            ((gui 'add-switch!) (car lst) (car (cdr connection-list)) (car (cdr (cdr connection-list))) (car (cdr (cdr (cdr connection-list)))))
+            (iter (cdr lst)))))
+      (iter switch-ids)
+      (set! setup-count (+ setup-count 1)))
+    
+    (define (setup-detectionblocks detection-blocks)
+      (define (iter lst)
+        (when (not (null? lst))
+          ((gui 'add-detectionblock!) (car lst))
+          (iter (cdr lst))))
+      (iter detection-blocks)
+      (set! setup-count (+ setup-count 1)))
+
+    (define (non-occupied-blocks blocks)
+      (filter (lambda (elem) (not (member ((car elem) 'get-id) blocks)))
+              (gui 'get-detectionblock-list)))
+
+    (define (occupied-blocks blocks)
+      (filter (lambda (elem)
+                (member ((car elem) 'get-id) blocks))
+              (gui 'get-detectionblock-list)))
+
+    (define (change-blocks-values lst val)
+      (define (iter lijst)
+        (when (not (null? lijst))
+          (if val
+              (begin
+                (((caar lijst) 'set-occupied!) #t))
+              (begin
+                ((caar lijst) 'remove-train!)
+                ((caar lijst) 'set-occupied!) #f))
+          ((gui 'change-detection-block!) (car lijst) val)
+          (iter (cdr lijst))))
+      (iter lst))
+    
+    (define (changed-detectionblocks occupied non-occupied)
+      (filter (lambda (detectionblock)
+                (let ((id (detectionblock 'get-id))
+                      (current-occupied? (detectionblock 'occupied?)))
+                  (cond ((member id occupied) (not current-occupied?))
+                        ((member id non-occupied) current-occupied?)
+                        (else #f))))
+              (gui 'get-detectionblocks)))
+    
+    (define (update-detectionblocks changed)
+      (for-each (lambda (block)
+                  (if (block 'occupied?)
+                      (when (and (not (null? (block 'next-trains))) (not (eq? ((car (block 'next-trains)) 'get-speed) 0)))
+                        (begin
+                          ((block 'add-train!) ((car (block 'next-trains)) 'get-id))
+                          (((search-adt ((car (block 'next-trains)) 'get-id) (gui 'get-train-list)) 'set-pos!) (block 'get-id))
+
+                          ;Change the train position in the GUI
+                          ((gui 'change-train-position!) ((car (block 'next-trains)) 'get-id))
+
+                          ((gui 'inform-detectionblocks) (car (block 'next-trains)) (block 'get-id))
+                          ((block 'remove-first-next!)))
+                        )
+                      (begin
+                        (when (not (null? (block 'next-trains)))
+                          (((car (block 'next-trains)) 'change-speed!) ((car (block 'next-trains)) 'get-prev-speed)))
+                        ((block 'remove-train!)))))
+                (map (lambda (id)
+                       (search-adt id (gui 'get-detectionblocks))) changed)))
+    
+    (define (detectionblock-loop oc-blocks)
+      (let* ((occupied (occupied-blocks oc-blocks))
+             (non-occupied (non-occupied-blocks oc-blocks))
+             (changed (remove-duplicates (map (lambda (det)
+                                                (det 'get-id)) (changed-detectionblocks
+                                                                (map (lambda (det) ((car det) 'get-id)) occupied)
+                                                                (map (lambda (det) ((car det) 'get-id)) non-occupied))))))
+        (change-blocks-values occupied #t)
+        (change-blocks-values non-occupied #f)
+        (update-detectionblocks changed)))
+
+    (define (train-checks train)
+      (when (not (= (train 'get-speed) 0))
+        (if (positive? (train 'get-speed))
+            (let loop ((lijst (railway 'detection-connection)))
+              (let ((det ((railway 'positive-next) (train 'get-pos) lijst)))
+                (when det
+                  (when ((search-adt (cdr det) (gui 'get-detectionblocks)) 'occupied?)
+                    ((train 'change-speed!) 0))
+                  (((search-adt (cdr det) (gui 'get-detectionblocks)) 'add-next!) train)
+                  (let ((new-lijst (remove-connection det lijst)))
+                    (when (not (equal? new-lijst lijst))
+                      (loop new-lijst))))))              
+            (let loop ((lijst (railway 'detection-connection)))
+              (let ((det ((railway 'negative-next) (train 'get-pos) lijst)))
+                (when det
+                  (when (and ((search-adt (cdr det) (gui 'get-detectionblocks)) 'occupied?) (not (eq? ((search-adt (cdr det) (gui 'get-detectionblocks)) 'train) (train 'get-id))))
+                    ((train 'change-speed!) 0))
+                  (((search-adt (car det) (gui 'get-detectionblocks)) 'add-next!) train)
+                  (let ((new-lijst (remove-connection det lijst)))
+                    (when (not (equal? new-lijst lijst))
+                      (loop new-lijst)))))))
+        (when (and (train 'get-destination) (eq? (train 'get-destination) (train 'get-pos)))
+          ((train 'change-speed!) 0))))
+
+    (define (barrier-checks train) ;This is reponsible for handling the train actions on barrier open/close
+      (for-each (lambda (pair)
+                  (when (and (eq? (cdr pair) (train 'get-pos)) ((search-adt (car pair) (first-elements (gui 'get-barriers-list))) 'closed?))
+                    ((train 'change-speed!) 0))
+                  (when (and (eq? (cdr pair) (train 'get-pos)) (not ((search-adt (car pair) (first-elements (gui 'get-barriers-list))) 'closed?)) (= (train 'get-speed) 0))
+                    ((train 'change-speed!) (train 'get-prev-speed))))
+                (railway 'barrier-locations)))
+
+    (define (train-loop)
+      (for-each (lambda (train)
+                  (train-checks train)
+                  (barrier-checks train))
+                (gui 'get-train-list)))
+
+    (define (start-route lst) ;Calculate wich direction and wich switches need to be turned on/off
+      (let ((path (car lst))
+            (train (search-adt (car (cdr lst)) (gui 'get-train-list))))
+
+        (define (change-switches path)
+          (define (iter lst)
+            (when (not (null? (cdr lst)))
+              (let ((switch (search-adt (car lst) (gui 'get-switches))))
+                (if switch
+                    (begin
+                      (when (eq? (switch 'not-connected-out) (cadr lst))
+                        ((switch 'change-status!) (not (switch 'get-value))))
+                      (iter (cdr lst)))
+                    (iter (cdr lst))))))
+          
+          (iter path))
+
+        (define (start-train! path train) ;Logic to set the speed of the train to the right way
+          (for-each (lambda (pair)
+                      (when (and (eq? (car path) (car pair)) (eq? (cadr path) (cdr pair))) ;Positive
+                        ((train 'change-speed!) 200))
+                      (when (and (eq? (cadr path) (car pair)) (eq? (car path) (cdr pair))) ;Positive
+                        ((train 'change-speed!) -200)))
+                    (append (railway 'detection-connection) (railway 'railway-conenctions)))
+          ((train 'set-destination!) (get-last-item path)))
+        
+        (change-switches path)
+        (start-train! path train)))
+
+    (define timer (new timer%
+                       [notify-callback (lambda ()
+                                          (train-loop)
+                                          ((connection 'send-message) (list 'NMBS 'detectionblock-loop)) ;This will be send to infrabel and get returned with the occupied detectionblock list
+                                          )]
+                       [interval #f]))
+    
+    (define (start)   
+      ;Add hardcoded lights
+      ((gui 'add-light!) 'L-1 'Hp0)
+      ((gui 'add-light!) 'L-2 'Hp0)
+      ((gui 'add-barrier!) 'C-2)
+      ((gui 'add-barrier!) 'C-1)
+
+      ;Start timer loop
+      (send timer start 300)
+      (set! started? #t))
+
+    (define (dispatch msg)
+      (cond ((eq? msg 'start) start)
+            ((eq? msg 'setup-switches) setup-switches)
+            ((eq? msg 'setup-detectionblocks) setup-detectionblocks)
+            ((eq? msg 'get-gui) gui)
+            ((eq? msg 'start-route) start-route)
+            ((eq? msg 'started?) started?)
+            ((eq? msg 'detectionblock-loop) detectionblock-loop)
+            ((eq? msg 'setup-count) setup-count)
+            (else (display "Error: NMBS.rkt => ") (display msg))))
+    
+    (set! connection (make-nmbs-connection dispatch))
+    (set! gui (make-gui railway connection))
+    
+    dispatch))
